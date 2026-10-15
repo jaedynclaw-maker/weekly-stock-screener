@@ -1,15 +1,22 @@
 """
 Weekly Stock Opportunity Screener - Core Logic
+Uses free yfinance data.
 Focus: strong recent momentum + rising volume + basic risk filters.
-Also supports IPO calendar (info only) and a higher-risk small/mid list.
+Also supports:
+- Higher-risk smaller stocks universe
+- IPO calendar (info only)
+- Watchlist history
+- Illustrative potential estimates
+- Company info + blurbs for top stocks
 """
 
 import pandas as pd
 import numpy as np
 import yfinance as yf
-from datetime import datetime, timedelta
+from datetime import datetime
 import warnings
 warnings.filterwarnings("ignore")
+
 
 # -----------------------------
 # 1. Universes
@@ -33,30 +40,30 @@ def get_sp500_tickers():
             "SBUX", "INTU", "AXP", "BA", "GS", "BLK", "AMD", "ISRG", "SPGI"
         ]
 
+
 def get_higher_risk_tickers():
     """
-    Curated liquid small/mid-cap + recent growth names.
-    Higher volatility / risk than S&P 500. Not pure start-ups (those rarely
-    have enough free daily data), but smaller and higher-beta names.
+    Curated liquid small/mid-cap + recent growth / higher-volatility names.
+    Higher risk than S&P 500.
     """
     return [
-        # Liquid small/mid growth & recent high-momentum style
         "SMCI", "MSTR", "COIN", "HOOD", "SOFI", "UPST", "AFRM", "PATH",
         "SNOW", "NET", "DDOG", "CRWD", "ZS", "MDB", "ESTC", "BILL",
         "TOST", "CAVA", "DUOL", "CELH", "HIMS", "OSCR", "RXRX", "IONQ",
         "RIVN", "LCID", "NIO", "XPEV", "LI", "PLTR", "AI", "BBAI",
-        "RKLB", "ASTS", "LUNR", "JOBY", "ACHR", "JOBY", "RDW", "BKSY",
-        "SOUN", "BBAI", "UPST", "AFRM", "OPEN", "RDFN", "COMP", "Z",
-        "CVNA", "W", "CHWY", "PTON", "BYND", "SPCE", "NKLA", "RIDE",
-        # A few more liquid mid/small
+        "RKLB", "ASTS", "LUNR", "JOBY", "ACHR", "RDW", "BKSY",
+        "SOUN", "OPEN", "RDFN", "COMP", "Z",
+        "CVNA", "W", "CHWY", "PTON", "BYND", "SPCE",
         "FSLR", "ENPH", "RUN", "SEDG", "ARRY", "SHLS", "BE", "PLUG",
-        "FCEL", "BLNK", "CHPT", "EVGO", "QS", "FREY", "MVST", "GOEV"
+        "FCEL", "BLNK", "CHPT", "EVGO", "QS", "MVST"
     ]
+
 
 # -----------------------------
 # 2. Download data
 # -----------------------------
 def download_data(tickers, period="6mo"):
+    """Download daily OHLCV for a list of tickers."""
     print(f"Downloading data for {len(tickers)} tickers...")
     data = yf.download(
         tickers,
@@ -69,8 +76,9 @@ def download_data(tickers, period="6mo"):
     )
     return data
 
+
 # -----------------------------
-# 3. Indicators
+# 3. Indicators & metrics
 # -----------------------------
 def compute_rsi(series, period=14):
     delta = series.diff()
@@ -82,7 +90,9 @@ def compute_rsi(series, period=14):
     rsi = 100 - (100 / (1 + rs))
     return rsi
 
+
 def analyze_ticker(df, ticker):
+    """Analyze a single ticker. Returns metrics dict or None."""
     if df is None or len(df) < 50:
         return None
 
@@ -91,26 +101,31 @@ def analyze_ticker(df, ticker):
     if len(close) < 50:
         return None
 
+    # Returns
     ret_1w = (close.iloc[-1] / close.iloc[-6] - 1) * 100 if len(close) >= 6 else np.nan
     ret_1m = (close.iloc[-1] / close.iloc[-22] - 1) * 100 if len(close) >= 22 else np.nan
     ret_3m = (close.iloc[-1] / close.iloc[-66] - 1) * 100 if len(close) >= 66 else np.nan
 
+    # Moving averages
     sma50 = close.rolling(50).mean().iloc[-1]
     sma200 = close.rolling(200).mean().iloc[-1] if len(close) >= 200 else np.nan
     price = close.iloc[-1]
     dist_sma50 = (price / sma50 - 1) * 100 if pd.notna(sma50) else np.nan
     dist_sma200 = (price / sma200 - 1) * 100 if pd.notna(sma200) else np.nan
 
+    # RSI
     rsi = compute_rsi(close).iloc[-1]
 
+    # Volume
     avg_vol_20 = volume.rolling(20).mean().iloc[-1]
     avg_vol_5 = volume.rolling(5).mean().iloc[-1]
     rel_volume = avg_vol_5 / avg_vol_20 if avg_vol_20 > 0 else np.nan
 
+    # 52-week high proximity
     high_52w = close.max()
     dist_52w_high = (price / high_52w - 1) * 100
 
-    # Simple volatility for illustrative range
+    # Recent volatility (for illustrative range)
     daily_rets = close.pct_change().dropna()
     vol_20 = daily_rets.tail(20).std() * 100 if len(daily_rets) >= 20 else np.nan
 
@@ -131,14 +146,18 @@ def analyze_ticker(df, ticker):
         "vol_20d": round(vol_20, 2) if pd.notna(vol_20) else None,
     }
 
+
 def score_stock(row):
+    """Composite Opportunity Score."""
     score = 0.0
 
+    # Momentum (core)
     if pd.notna(row["ret_1w"]):
         score += row["ret_1w"] * 1.5
     if pd.notna(row["ret_1m"]):
         score += row["ret_1m"] * 0.8
 
+    # Volume
     if pd.notna(row["rel_volume"]):
         if row["rel_volume"] >= 1.5:
             score += 8
@@ -149,11 +168,13 @@ def score_stock(row):
         else:
             score -= 3
 
+    # Trend quality
     if row.get("above_sma50"):
         score += 4
     if row.get("above_sma200"):
         score += 3
 
+    # RSI
     if pd.notna(row["rsi"]):
         if 55 <= row["rsi"] <= 70:
             score += 5
@@ -164,6 +185,7 @@ def score_stock(row):
         elif row["rsi"] < 35:
             score -= 2
 
+    # Near 52-week high
     if pd.notna(row["dist_52w_high"]):
         if -5 <= row["dist_52w_high"] <= 0:
             score += 4
@@ -172,28 +194,24 @@ def score_stock(row):
 
     return round(score, 2)
 
+
 def illustrative_potential(row):
     """
-    Very rough illustrative 4-week potential range.
-    Based on recent momentum + recent volatility.
-    THIS IS NOT A FORECAST — pure heuristic for idea generation only.
+    Rough illustrative 4-week potential range.
+    Based on recent momentum + volatility.
+    THIS IS NOT A FORECAST — heuristic only.
     """
     if pd.isna(row.get("ret_1w")) or pd.isna(row.get("vol_20d")):
         return "N/A"
 
-    # Conservative: take ~40% of the recent 1-week momentum, scaled to ~4 weeks
-    # and add a volatility band
-    base = row["ret_1w"] * 0.4 * 4          # rough 4-week continuation assumption
-    band = row["vol_20d"] * 2.0             # roughly 2 standard deviations of daily vol
+    base = row["ret_1w"] * 0.4 * 4
+    band = row["vol_20d"] * 2.0
 
-    low = base - band
-    high = base + band
-
-    # Clamp to sane display range
-    low = max(low, -40)
-    high = min(high, 60)
+    low = max(base - band, -40)
+    high = min(base + band, 60)
 
     return f"{low:+.0f}% to {high:+.0f}%"
+
 
 # -----------------------------
 # 4. Company info + blurbs
@@ -224,6 +242,7 @@ def get_company_info(ticker):
             "summary": ""
         }
 
+
 def format_market_cap(mc):
     if not mc or pd.isna(mc):
         return "N/A"
@@ -234,6 +253,7 @@ def format_market_cap(mc):
     if mc >= 1e6:
         return f"${mc/1e6:.0f}M"
     return f"${mc:,.0f}"
+
 
 def build_why_blurb(row):
     reasons = []
@@ -269,7 +289,9 @@ def build_why_blurb(row):
         return f"Ranked high because of {reasons[0]}."
     return "Ranked high because of " + ", ".join(reasons[:-1]) + f" and {reasons[-1]}."
 
+
 def enrich_top_stocks(df, n=5):
+    """Add company info and blurbs to the top N stocks."""
     if df.empty:
         return df
 
@@ -293,14 +315,12 @@ def enrich_top_stocks(df, n=5):
     top["why"] = whys
     return top
 
+
 # -----------------------------
 # 5. IPO calendar (info only)
 # -----------------------------
 def get_ipo_calendar(limit=30):
-    """
-    Fetch upcoming / recent IPO info from yfinance Calendars.
-    Returns a DataFrame or empty DataFrame on failure.
-    """
+    """Fetch upcoming / recent IPO info from yfinance Calendars."""
     try:
         cal = yf.Calendars()
         df = cal.get_ipo_info_calendar(limit=limit)
@@ -311,10 +331,47 @@ def get_ipo_calendar(limit=30):
         print(f"IPO calendar error: {e}")
         return pd.DataFrame()
 
+
 # -----------------------------
-# 6. Main screener
+# 6. Watchlist helper
+# -----------------------------
+def get_watchlist_history(tickers, period="3mo"):
+    """Quick history + scoring for a short list of watchlist tickers."""
+    if not tickers:
+        return pd.DataFrame()
+
+    data = download_data(tickers, period=period)
+    results = []
+
+    if isinstance(data.columns, pd.MultiIndex):
+        available = data.columns.get_level_values(0).unique()
+        for ticker in available:
+            try:
+                df = data[ticker].copy()
+                metrics = analyze_ticker(df, ticker)
+                if metrics:
+                    results.append(metrics)
+            except Exception:
+                continue
+    else:
+        metrics = analyze_ticker(data, tickers[0] if isinstance(tickers, list) else tickers)
+        if metrics:
+            results.append(metrics)
+
+    if not results:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(results)
+    df["score"] = df.apply(score_stock, axis=1)
+    df["illustrative_4w"] = df.apply(illustrative_potential, axis=1)
+    return df
+
+
+# -----------------------------
+# 7. Main screening function
 # -----------------------------
 def run_screener(tickers=None, top_n=15, min_price=5.0):
+    """Run the full weekly opportunity screener."""
     if tickers is None:
         tickers = get_sp500_tickers()
 
@@ -358,7 +415,9 @@ def run_screener(tickers=None, top_n=15, min_price=5.0):
 
     return df.head(top_n)
 
+
 def generate_report(df, top_n=10):
+    """Pretty text report."""
     if df.empty:
         return "No results found."
 
@@ -367,7 +426,7 @@ def generate_report(df, top_n=10):
     lines.append(f"  WEEKLY STOCK OPPORTUNITY REPORT  |  {datetime.now().strftime('%Y-%m-%d %H:%M')}")
     lines.append("=" * 70)
     lines.append("")
-    lines.append("Focus: Strong recent momentum + rising volume  |  Lower downside risk filters applied")
+    lines.append("Focus: Strong recent momentum + rising volume  |  Risk filters applied")
     lines.append("")
     lines.append(f"Top {min(top_n, len(df))} most promising names this week:\n")
 
@@ -377,7 +436,7 @@ def generate_report(df, top_n=10):
         vol_str = f"{row['rel_volume']:.2f}x" if pd.notna(row['rel_volume']) else "N/A"
         rsi_str = f"{row['rsi']:.0f}" if pd.notna(row['rsi']) else "N/A"
         lines.append(f"     Rel Vol: {vol_str:<6}  RSI: {rsi_str:<4}  vs 50SMA: {row['dist_sma50']:+.1f}%")
-        if "illustrative_4w" in row:
+        if "illustrative_4w" in row and row["illustrative_4w"] != "N/A":
             lines.append(f"     Illustrative 4W range: {row['illustrative_4w']}  (heuristic only)")
         reason = []
         if row['ret_1w'] > 3:
@@ -400,42 +459,10 @@ def generate_report(df, top_n=10):
 
     return "\n".join(lines)
 
+
 if __name__ == "__main__":
     print("Running weekly opportunity screener...")
     results = run_screener(top_n=12)
     print(generate_report(results))
     results.to_csv("weekly_opportunities.csv", index=False)
     print("\nSaved results to weekly_opportunities.csv")
-def get_watchlist_history(tickers, period="3mo"):
-    """
-    Quick history for a short list of watchlist tickers.
-    Returns a DataFrame with recent metrics.
-    """
-    if not tickers:
-        return pd.DataFrame()
-
-    data = download_data(tickers, period=period)
-    results = []
-
-    if isinstance(data.columns, pd.MultiIndex):
-        available = data.columns.get_level_values(0).unique()
-        for ticker in available:
-            try:
-                df = data[ticker].copy()
-                metrics = analyze_ticker(df, ticker)
-                if metrics:
-                    results.append(metrics)
-            except Exception:
-                continue
-    else:
-        metrics = analyze_ticker(data, tickers[0] if isinstance(tickers, list) else tickers)
-        if metrics:
-            results.append(metrics)
-
-    if not results:
-        return pd.DataFrame()
-
-    df = pd.DataFrame(results)
-    df["score"] = df.apply(score_stock, axis=1)
-    df["illustrative_4w"] = df.apply(illustrative_potential, axis=1)
-    return df
