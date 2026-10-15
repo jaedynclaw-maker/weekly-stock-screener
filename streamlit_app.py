@@ -154,18 +154,24 @@ if st.session_state.results is not None and not st.session_state.results.empty:
         st.plotly_chart(fig1, use_container_width=True)
 
     with c2:
-        fig2 = px.scatter(
-            df,
-            x="ret_1w",
-            y="rel_volume",
-            size="score",
-            color="rsi",
-            hover_name="ticker",
-            color_continuous_scale="RdYlGn",
-            title="Momentum vs Volume (size = Score)"
-        )
-        fig2.update_layout(height=400)
-        st.plotly_chart(fig2, use_container_width=True)
+        # Clean data for scatter plot (remove rows with missing values)
+        chart_df = df.dropna(subset=["ret_1w", "rel_volume", "score", "rsi"]).copy()
+        
+        if not chart_df.empty:
+            fig2 = px.scatter(
+                chart_df,
+                x="ret_1w",
+                y="rel_volume",
+                size="score",
+                color="rsi",
+                hover_name="ticker",
+                color_continuous_scale="RdYlGn",
+                title="Momentum vs Volume (size = Score)"
+            )
+            fig2.update_layout(height=400)
+            st.plotly_chart(fig2, use_container_width=True)
+        else:
+            st.info("Not enough data for the scatter chart.")
 
     with st.expander("📄 Full Text Report", expanded=False):
         st.code(generate_report(df, top_n=top_n), language=None)
