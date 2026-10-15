@@ -34,7 +34,6 @@ def get_sp500_tickers():
             "SBUX", "INTU", "AXP", "BA", "GS", "BLK", "AMD", "ISRG", "SPGI"
         ]
 
-
 # -----------------------------
 # 2. Download data
 # -----------------------------
@@ -52,7 +51,6 @@ def download_data(tickers, period="6mo"):
     )
     return data
 
-
 # -----------------------------
 # 3. Calculate indicators & metrics
 # -----------------------------
@@ -65,7 +63,6 @@ def compute_rsi(series, period=14):
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
     return rsi
-
 
 def analyze_ticker(df, ticker):
     """
@@ -120,7 +117,6 @@ def analyze_ticker(df, ticker):
         "above_sma200": price > sma200 if pd.notna(sma200) else False,
     }
 
-
 def score_stock(row):
     """
     Composite Opportunity Score.
@@ -171,9 +167,110 @@ def score_stock(row):
 
     return round(score, 2)
 
+# -----------------------------
+# 4. Company info + blurb helpers
+# -----------------------------
+def get_company_info(ticker):
+    """Fetch company name, sector, industry, market cap and short summary."""
+    try:
+        info = yf.Ticker(ticker).info
+        name = info.get("longName") or info.get("shortName") or ticker
+        sector = info.get("sector") or "N/A"
+        industry = info.get("industry") or "N/A"
+        market_cap = info.get("marketCap")
+        summary = info.get("longBusinessSummary") or info.get("description") or ""
+        # Keep summary short
+        if summary and len(summary) > 280:
+            summary = summary[:277] + "..."
+        return {
+            "name": name,
+            "sector": sector,
+            "industry": industry,
+            "market_cap": market_cap,
+            "summary": summary
+        }
+    except Exception:
+        return {
+            "name": ticker,
+            "sector": "N/A",
+            "industry": "N/A",
+            "market_cap": None,
+            "summary": ""
+        }
+
+def format_market_cap(mc):
+    if not mc or pd.isna(mc):
+        return "N/A"
+    if mc >= 1e12:
+        return f"${mc/1e12:.1f}T"
+    if mc >= 1e9:
+        return f"${mc/1e9:.1f}B"
+    if mc >= 1e6:
+        return f"${mc/1e6:.0f}M"
+    return f"${mc:,.0f}"
+
+def build_why_blurb(row):
+    """Create a natural-language reason based on the actual metrics."""
+    reasons = []
+    if pd.notna(row.get("ret_1w")) and row["ret_1w"] > 3:
+        reasons.append(f"strong 1-week momentum (+{row['ret_1w']:.1f}%)")
+    elif pd.notna(row.get("ret_1w")) and row["ret_1w"] > 1:
+        reasons.append(f"positive 1-week momentum (+{row['ret_1w']:.1f}%)")
+
+    if pd.notna(row.get("ret_1m")) and row["ret_1m"] > 5:
+        reasons.append(f"solid 1-month gain (+{row['ret_1m']:.1f}%)")
+
+    if pd.notna(row.get("rel_volume")):
+        if row["rel_volume"] >= 1.5:
+            reasons.append(f"elevated volume ({row['rel_volume']:.1f}x average)")
+        elif row["rel_volume"] >= 1.2:
+            reasons.append(f"rising volume ({row['rel_volume']:.1f}x average)")
+
+    if row.get("above_sma50") and row.get("above_sma200"):
+        reasons.append("trading above both 50-day and 200-day moving averages")
+    elif row.get("above_sma50"):
+        reasons.append("holding above the 50-day moving average")
+
+    if pd.notna(row.get("rsi")) and 55 <= row["rsi"] <= 70:
+        reasons.append(f"healthy RSI ({row['rsi']:.0f}) — momentum without being extremely overbought")
+
+    if pd.notna(row.get("dist_52w_high")) and -8 <= row["dist_52w_high"] <= 0:
+        reasons.append("trading near its 52-week high (breakout territory)")
+
+    if not reasons:
+        return "Scored well on the combination of recent momentum, volume and trend filters."
+
+    if len(reasons) == 1:
+        return f"Ranked high because of {reasons[0]}."
+    return "Ranked high because of " + ", ".join(reasons[:-1]) + f" and {reasons[-1]}."
+
+def enrich_top_stocks(df, n=5):
+    """Add company info and blurbs to the top N stocks."""
+    if df.empty:
+        return df
+
+    top = df.head(n).copy()
+    names, sectors, industries, mcaps, summaries, whys = [], [], [], [], [], []
+
+    for _, row in top.iterrows():
+        info = get_company_info(row["ticker"])
+        names.append(info["name"])
+        sectors.append(info["sector"])
+        industries.append(info["industry"])
+        mcaps.append(format_market_cap(info["market_cap"]))
+        summaries.append(info["summary"])
+        whys.append(build_why_blurb(row))
+
+    top["company_name"] = names
+    top["sector"] = sectors
+    top["industry"] = industries
+    top["market_cap"] = mcaps
+    top["summary"] = summaries
+    top["why"] = whys
+    return top
 
 # -----------------------------
-# 4. Main screening function
+# 5. Main screening function
 # -----------------------------
 def run_screener(tickers=None, top_n=15, min_price=5.0):
     """
@@ -225,7 +322,6 @@ def run_screener(tickers=None, top_n=15, min_price=5.0):
 
     return df.head(top_n)
 
-
 def generate_report(df, top_n=10):
     """Pretty text report for the top opportunities."""
     if df.empty:
@@ -265,7 +361,6 @@ def generate_report(df, top_n=10):
     lines.append("=" * 70)
 
     return "\n".join(lines)
-
 
 if __name__ == "__main__":
     # Quick test when run directly
