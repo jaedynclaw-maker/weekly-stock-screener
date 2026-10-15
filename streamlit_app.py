@@ -6,7 +6,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from stock_screener_core import run_screener, get_sp500_tickers, generate_report
+from stock_screener_core import (
+    run_screener, get_sp500_tickers, generate_report, enrich_top_stocks
+)
 
 st.set_page_config(
     page_title="Weekly Stock Opportunities",
@@ -27,6 +29,13 @@ st.markdown("""
         font-size: 1.1rem;
         color: #B0BEC5;
         margin-bottom: 1.5rem;
+    }
+    .stock-card {
+        background-color: #1E1E1E;
+        border: 1px solid #333;
+        border-radius: 10px;
+        padding: 1.2rem;
+        margin-bottom: 1rem;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -64,6 +73,7 @@ with st.sidebar:
 if "results" not in st.session_state:
     st.session_state.results = None
     st.session_state.last_run = None
+    st.session_state.top5_enriched = None
 
 if run_button:
     with st.spinner("Downloading data and calculating scores... (30-90 seconds)"):
@@ -83,6 +93,13 @@ if run_button:
         st.session_state.results = results
         st.session_state.last_run = datetime.now()
 
+        # Enrich top 5 with company info + blurbs
+        if not results.empty:
+            with st.spinner("Fetching company details for top 5..."):
+                st.session_state.top5_enriched = enrich_top_stocks(results, n=5)
+        else:
+            st.session_state.top5_enriched = None
+
 if st.session_state.results is not None and not st.session_state.results.empty:
     df = st.session_state.results
 
@@ -100,6 +117,33 @@ if st.session_state.results is not None and not st.session_state.results.empty:
     with col4:
         above_50 = df['above_sma50'].sum()
         st.metric("Above 50-day MA", f"{above_50}/{len(df)}")
+
+    # ---------- TOP 5 BLURBS ----------
+    if st.session_state.top5_enriched is not None and not st.session_state.top5_enriched.empty:
+        st.markdown("---")
+        st.subheader("⭐ Top 5 Ranked Stocks — Quick Blurbs")
+
+        for _, row in st.session_state.top5_enriched.iterrows():
+            with st.container():
+                st.markdown(f"### #{int(row['rank'])}  {row['ticker']} — {row['company_name']}")
+                
+                meta_cols = st.columns(4)
+                meta_cols[0].markdown(f"**Sector:** {row['sector']}")
+                meta_cols[1].markdown(f"**Industry:** {row['industry']}")
+                meta_cols[2].markdown(f"**Market Cap:** {row['market_cap']}")
+                meta_cols[3].markdown(f"**Score:** {row['score']:.1f}")
+
+                st.markdown(f"**Price:** ${row['price']:.2f} &nbsp;|&nbsp; "
+                            f"**1W:** {row['ret_1w']:+.1f}% &nbsp;|&nbsp; "
+                            f"**1M:** {row['ret_1m']:+.1f}% &nbsp;|&nbsp; "
+                            f"**Rel Vol:** {row['rel_volume']:.2f}x &nbsp;|&nbsp; "
+                            f"**RSI:** {row['rsi']:.0f}")
+
+                if row['summary']:
+                    st.markdown(f"**About:** {row['summary']}")
+
+                st.markdown(f"**Why it ranked high this week:** {row['why']}")
+                st.markdown("---")
 
     st.markdown("---")
     st.subheader("🏆 Ranked Opportunities")
@@ -192,7 +236,7 @@ else:
     2. Calculates momentum, relative volume, RSI and trend
     3. Scores stocks with focus on strong momentum + rising volume
     4. Applies filters to reduce downside risk
-    5. Shows the most promising names
+    5. Shows the most promising names + short company blurbs for the top 5
 
     **Tip:** Run it once a week (Friday evening or Saturday NZ time).
     """)
