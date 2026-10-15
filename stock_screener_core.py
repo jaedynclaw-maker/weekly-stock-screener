@@ -406,3 +406,36 @@ if __name__ == "__main__":
     print(generate_report(results))
     results.to_csv("weekly_opportunities.csv", index=False)
     print("\nSaved results to weekly_opportunities.csv")
+def get_watchlist_history(tickers, period="3mo"):
+    """
+    Quick history for a short list of watchlist tickers.
+    Returns a DataFrame with recent metrics.
+    """
+    if not tickers:
+        return pd.DataFrame()
+
+    data = download_data(tickers, period=period)
+    results = []
+
+    if isinstance(data.columns, pd.MultiIndex):
+        available = data.columns.get_level_values(0).unique()
+        for ticker in available:
+            try:
+                df = data[ticker].copy()
+                metrics = analyze_ticker(df, ticker)
+                if metrics:
+                    results.append(metrics)
+            except Exception:
+                continue
+    else:
+        metrics = analyze_ticker(data, tickers[0] if isinstance(tickers, list) else tickers)
+        if metrics:
+            results.append(metrics)
+
+    if not results:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(results)
+    df["score"] = df.apply(score_stock, axis=1)
+    df["illustrative_4w"] = df.apply(illustrative_potential, axis=1)
+    return df
