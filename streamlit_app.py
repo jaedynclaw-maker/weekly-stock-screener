@@ -1,113 +1,104 @@
 """
-Weekly Stock Opportunity Screener - Polished Dashboard
-Apple-style UI + Watchlist + NZD prices + ASX support
+Weekly Stock Opportunity Screener - Modern Dashboard
+Clean portfolio-style UI + Watchlist with search + NZD + change tracking
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime
 from stock_screener_core import (
-    run_screener,
-    get_sp500_tickers,
-    get_higher_risk_tickers,
-    get_asx_tickers,
-    generate_report,
-    enrich_top_stocks,
-    get_ipo_calendar,
-    get_watchlist_history,
-    get_usd_nzd_rate
+    run_screener, get_sp500_tickers, get_higher_risk_tickers, get_asx_tickers,
+    generate_report, enrich_top_stocks, get_ipo_calendar,
+    get_watchlist_history, get_usd_nzd_rate, search_companies, get_company_info
 )
 
-st.set_page_config(
-    page_title="Weekly Stock Opportunities",
-    page_icon="📈",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Stock Opportunities", page_icon="📈", layout="wide", initial_sidebar_state="expanded")
 
-# ---------- Clean Apple-style CSS ----------
+# ---------- Modern CSS ----------
 st.markdown("""
 <style>
-    .stApp { background-color: #0d0d0f; color: #f5f5f7; }
-    .main-header { font-size: 2.1rem; font-weight: 700; color: #f5f5f7; letter-spacing: -0.5px; margin-bottom: 0.15rem; }
-    .sub-header { font-size: 1.05rem; color: #8e8e93; margin-bottom: 1.5rem; }
-    .bubble-card {
-        background: #1c1c1e; border-radius: 18px; padding: 1.3rem 1.4rem;
-        margin-bottom: 1rem; border: 1px solid #2c2c2e;
-        box-shadow: 0 6px 22px rgba(0,0,0,0.28);
+    .stApp { background-color: #0f0f12; color: #f5f5f7; }
+    .main-title { font-size: 1.9rem; font-weight: 700; color: #ffffff; letter-spacing: -0.5px; margin-bottom: 0.2rem; }
+    .sub-title { font-size: 0.95rem; color: #8e8e93; margin-bottom: 1.4rem; }
+    .card {
+        background: #1c1c1e;
+        border-radius: 16px;
+        padding: 1.25rem 1.4rem;
+        margin-bottom: 0.9rem;
+        border: 1px solid #2c2c2e;
     }
-    .bubble-card-title { font-size: 1.15rem; font-weight: 600; color: #f5f5f7; margin-bottom: 0.5rem; }
-    .metric-label { font-size: 0.82rem; color: #8e8e93; margin-bottom: 0.15rem; }
-    .metric-value { font-size: 1.7rem; font-weight: 650; color: #f5f5f7; letter-spacing: -0.5px; }
-    .score-highlight { color: #30d158; font-weight: 700; }
-    .section-header { font-size: 1.3rem; font-weight: 600; color: #f5f5f7; margin: 1.6rem 0 0.9rem 0; }
-    .why-text { color: #d1d1d6; font-size: 0.94rem; line-height: 1.5; }
-    .success-pill {
-        background: #13251a; border: 1px solid #1e3a29; border-radius: 14px;
-        padding: 0.8rem 1.2rem; color: #30d158; font-weight: 500; margin-bottom: 1.1rem;
+    .card-title { font-size: 1.15rem; font-weight: 600; color: #ffffff; margin-bottom: 0.35rem; }
+    .ticker-badge {
+        display: inline-block;
+        background: #2c2c2e;
+        color: #30d158;
+        font-weight: 600;
+        font-size: 0.85rem;
+        padding: 0.15rem 0.55rem;
+        border-radius: 6px;
+        margin-right: 0.5rem;
     }
-    .info-box {
-        background: #1c1c1e; border-left: 4px solid #30d158; border-radius: 10px;
-        padding: 1rem 1.2rem; margin-bottom: 1rem; color: #d1d1d6;
-    }
+    .metric-label { font-size: 0.78rem; color: #8e8e93; margin-bottom: 0.1rem; }
+    .metric-value { font-size: 1.55rem; font-weight: 650; color: #ffffff; }
+    .green { color: #30d158; }
+    .red { color: #ff453a; }
+    .section { font-size: 1.25rem; font-weight: 600; color: #ffffff; margin: 1.5rem 0 0.8rem 0; }
+    .info { background: #1c1c1e; border-left: 4px solid #30d158; padding: 0.9rem 1.1rem; border-radius: 10px; color: #d1d1d6; margin-bottom: 1rem; }
+    .change-up { background: #13251a; color: #30d158; padding: 0.2rem 0.55rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; }
+    .change-down { background: #2a1215; color: #ff453a; padding: 0.2rem 0.55rem; border-radius: 6px; font-weight: 600; font-size: 0.85rem; }
     #MainMenu, footer {visibility: hidden;}
     section[data-testid="stSidebar"] { background-color: #161618; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---------- Header ----------
-st.markdown('<p class="main-header">Weekly Stock Opportunity Screener</p>', unsafe_allow_html=True)
-st.markdown('<p class="sub-header">Strong momentum + rising volume · Prices shown in USD & NZD</p>', unsafe_allow_html=True)
+st.markdown('<p class="main-title">Weekly Stock Opportunities</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Momentum + Volume Screener · Prices in USD & NZD</p>', unsafe_allow_html=True)
 
 # ---------- Sidebar ----------
 with st.sidebar:
     st.markdown("### Settings")
-    top_n = st.slider("Number of top stocks", 5, 25, 12)
-    min_price = st.number_input("Minimum price (USD)", min_value=1.0, value=5.0, step=1.0)
+    top_n = st.slider("Top stocks to show", 5, 20, 10)
+    min_price = st.number_input("Min price (USD)", 1.0, 500.0, 5.0, 1.0)
 
-    universe = st.radio(
-        "Market / Universe",
-        ["S&P 500 (US Large Cap)", "Higher-risk US stocks", "ASX (Australia)", "Custom tickers"]
-    )
+    universe = st.radio("Market", [
+        "S&P 500 (US)",
+        "Higher-risk US",
+        "ASX (Australia)",
+        "Custom"
+    ])
 
     custom_tickers = None
-    if universe == "Custom tickers":
-        custom_input = st.text_area(
-            "Enter tickers (comma separated)",
-            value="AAPL,MSFT,NVDA,BHP.AX,CBA.AX,TSLA"
-        )
-        custom_tickers = [t.strip().upper() for t in custom_input.split(",") if t.strip()]
+    if universe == "Custom":
+        raw = st.text_area("Tickers (comma separated)", "AAPL,MSFT,NVDA,BHP.AX,CBA.AX")
+        custom_tickers = [t.strip().upper() for t in raw.split(",") if t.strip()]
 
-    run_button = st.button("Run Screener", type="primary", use_container_width=True)
+    run_btn = st.button("Run Screener", type="primary", use_container_width=True)
 
     st.markdown("---")
-    st.markdown("**What a high score means**")
-    st.markdown("""
-    - Strong recent price momentum  
-    - Rising trading volume  
-    - Healthy technical position  
-    - Lower chance of immediate large drop  
-    """)
-    st.caption("This is a research tool, not financial advice.")
+    st.caption("Higher score = stronger recent momentum + rising volume while still looking healthy on the chart.")
 
 # ---------- Session state ----------
 if "results" not in st.session_state:
     st.session_state.results = None
     st.session_state.last_run = None
-    st.session_state.top5_enriched = None
-    st.session_state.universe_used = None
+    st.session_state.top5 = None
+    st.session_state.universe = None
     st.session_state.ipo_df = None
     st.session_state.watchlist = ["AAPL", "NVDA", "MSFT", "BHP.AX", "CBA.AX"]
     st.session_state.watchlist_data = None
+    st.session_state.prev_prices = {}          # for change tracking
     st.session_state.usd_nzd = 1.70
+    st.session_state.page = "Opportunities"
 
-# ---------- Run logic ----------
-if run_button:
-    with st.spinner("Downloading data and calculating scores... (this can take 30–90 seconds)"):
-        if universe == "S&P 500 (US Large Cap)":
+# ---------- Run screener ----------
+if run_btn:
+    with st.spinner("Scanning market... 30–90 seconds"):
+        if universe == "S&P 500 (US)":
             tickers = get_sp500_tickers()
-        elif universe == "Higher-risk US stocks":
+        elif universe == "Higher-risk US":
             tickers = get_higher_risk_tickers()
         elif universe == "ASX (Australia)":
             tickers = get_asx_tickers()
@@ -117,306 +108,313 @@ if run_button:
         results = run_screener(tickers=tickers, top_n=top_n, min_price=min_price)
         st.session_state.results = results
         st.session_state.last_run = datetime.now()
-        st.session_state.universe_used = universe
+        st.session_state.universe = universe
         st.session_state.usd_nzd = get_usd_nzd_rate()
 
         if not results.empty:
-            with st.spinner("Getting company details for top stocks..."):
-                st.session_state.top5_enriched = enrich_top_stocks(results, n=5)
+            st.session_state.top5 = enrich_top_stocks(results, n=5)
         else:
-            st.session_state.top5_enriched = None
+            st.session_state.top5 = None
 
-# ---------- Tabs ----------
-tab1, tab2, tab3, tab4 = st.tabs([
-    "Main Opportunities",
-    "Watchlist",
-    "Upcoming IPOs",
-    "How to use this"
-])
+# ---------- Bottom-style navigation ----------
+st.markdown("---")
+nav = st.radio(
+    "Navigation",
+    ["Opportunities", "Watchlist", "IPOs", "Guide"],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="nav"
+)
+st.session_state.page = nav
+st.markdown("---")
 
-# ==================== TAB 1: Main Opportunities ====================
-with tab1:
+rate = st.session_state.usd_nzd
+
+# ==================== PAGE: Opportunities ====================
+if st.session_state.page == "Opportunities":
     if st.session_state.results is not None and not st.session_state.results.empty:
         df = st.session_state.results
-        rate = st.session_state.usd_nzd
 
         st.markdown(f"""
-        <div class="success-pill">
-            Scan finished at {st.session_state.last_run.strftime('%Y-%m-%d %H:%M')} · 
-            Market: <b>{st.session_state.universe_used}</b> · 
-            Showing top {len(df)} stocks · USD→NZD rate ≈ {rate:.3f}
+        <div class="info">
+            Scan finished · {st.session_state.last_run.strftime('%Y-%m-%d %H:%M')} · 
+            Market: <b>{st.session_state.universe}</b> · USD→NZD ≈ {rate:.3f}
         </div>
         """, unsafe_allow_html=True)
 
-        # Key metrics
-        m1, m2, m3, m4 = st.columns(4)
-        with m1:
+        # Top metrics
+        c1, c2, c3, c4 = st.columns(4)
+        with c1:
             st.markdown(f"""
-            <div class="bubble-card">
-                <div class="metric-label">Highest Score</div>
-                <div class="metric-value score-highlight">{df['score'].iloc[0]:.1f}</div>
-                <div style="color:#8e8e93; font-size:0.9rem;">{df['ticker'].iloc[0]}</div>
+            <div class="card">
+                <div class="metric-label">Top Score</div>
+                <div class="metric-value green">{df['score'].iloc[0]:.1f}</div>
+                <div style="color:#8e8e93;font-size:0.85rem;">{df['ticker'].iloc[0]}</div>
             </div>
             """, unsafe_allow_html=True)
-        with m2:
+        with c2:
             st.markdown(f"""
-            <div class="bubble-card">
-                <div class="metric-label">Average 1-Week Move</div>
+            <div class="card">
+                <div class="metric-label">Avg 1-Week</div>
                 <div class="metric-value">{df['ret_1w'].mean():+.1f}%</div>
             </div>
             """, unsafe_allow_html=True)
-        with m3:
+        with c3:
             high_vol = (df['rel_volume'] >= 1.3).sum()
             st.markdown(f"""
-            <div class="bubble-card">
-                <div class="metric-label">Stocks with Rising Volume</div>
+            <div class="card">
+                <div class="metric-label">Rising Volume</div>
                 <div class="metric-value">{high_vol}</div>
             </div>
             """, unsafe_allow_html=True)
-        with m4:
-            above_50 = df['above_sma50'].sum()
+        with c4:
             st.markdown(f"""
-            <div class="bubble-card">
-                <div class="metric-label">Above 50-day Average</div>
-                <div class="metric-value">{above_50}/{len(df)}</div>
+            <div class="card">
+                <div class="metric-label">Above 50-day MA</div>
+                <div class="metric-value">{df['above_sma50'].sum()}/{len(df)}</div>
             </div>
             """, unsafe_allow_html=True)
 
-        # Top 5 - Bold & Clear
-        if st.session_state.top5_enriched is not None and not st.session_state.top5_enriched.empty:
-            st.markdown('<p class="section-header">Top 5 Stocks Worth Looking At</p>', unsafe_allow_html=True)
-            st.markdown("""
-            <div class="info-box">
-                These are the highest-scoring stocks from this scan.  
-                They currently show the strongest combination of recent momentum + rising volume while still looking reasonably healthy on the chart.
-            </div>
-            """, unsafe_allow_html=True)
+        # Top 5 cards
+        if st.session_state.top5 is not None and not st.session_state.top5.empty:
+            st.markdown('<p class="section">Top Opportunities</p>', unsafe_allow_html=True)
 
-            for _, row in st.session_state.top5_enriched.iterrows():
-                price_usd = row['price']
+            for _, row in st.session_state.top5.iterrows():
+                price_usd = row["price"]
                 price_nzd = price_usd * rate
-                is_asx = ".AX" in str(row['ticker'])
+                name = row.get("company_name", row["ticker"])
 
                 st.markdown(f"""
-                <div class="bubble-card">
-                    <div class="bubble-card-title">
-                        #{int(row['rank'])} &nbsp; {row['ticker']} &nbsp;·&nbsp; {row['company_name']}
+                <div class="card">
+                    <div class="card-title">
+                        <span class="ticker-badge">{row['ticker']}</span>
+                        {name}
                     </div>
-                    <div style="display:flex; gap:1.5rem; flex-wrap:wrap; margin-bottom:0.7rem; color:#a1a1a6; font-size:0.9rem;">
-                        <span><b style="color:#f5f5f7;">Sector</b> {row['sector']}</span>
-                        <span><b style="color:#f5f5f7;">Industry</b> {row['industry']}</span>
-                        <span><b style="color:#f5f5f7;">Market Cap</b> {row['market_cap']}</span>
-                        <span><b style="color:#30d158;">Score</b> {row['score']:.1f}</span>
+                    <div style="color:#a1a1a6;font-size:0.88rem;margin-bottom:0.6rem;">
+                        {row.get('sector','')} · {row.get('industry','')} · Market Cap {row.get('market_cap','N/A')}
                     </div>
-                    <div style="color:#d1d1d6; font-size:0.95rem; margin-bottom:0.6rem;">
-                        <b>Price</b> ${price_usd:.2f} USD &nbsp;≈&nbsp; <b>${price_nzd:.2f} NZD</b> &nbsp;·&nbsp;
-                        <b>1 Week</b> {row['ret_1w']:+.1f}% &nbsp;·&nbsp;
-                        <b>1 Month</b> {row['ret_1m']:+.1f}% &nbsp;·&nbsp;
-                        <b>Volume</b> {row['rel_volume']:.2f}x &nbsp;·&nbsp;
-                        <b>RSI</b> {row['rsi']:.0f}
+                    <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-bottom:0.6rem;">
+                        <div><span style="color:#8e8e93;">Price</span><br>
+                            <b>${price_usd:.2f}</b> USD &nbsp;≈&nbsp; <b>${price_nzd:.2f}</b> NZD
+                        </div>
+                        <div><span style="color:#8e8e93;">1 Week</span><br>
+                            <b class="{'green' if row['ret_1w']>=0 else 'red'}">{row['ret_1w']:+.1f}%</b>
+                        </div>
+                        <div><span style="color:#8e8e93;">1 Month</span><br>
+                            <b class="{'green' if row['ret_1m']>=0 else 'red'}">{row['ret_1m']:+.1f}%</b>
+                        </div>
+                        <div><span style="color:#8e8e93;">Volume</span><br>
+                            <b>{row['rel_volume']:.2f}x</b>
+                        </div>
+                        <div><span style="color:#8e8e93;">Score</span><br>
+                            <b class="green">{row['score']:.1f}</b>
+                        </div>
                     </div>
-                    <div style="color:#d1d1d6; font-size:0.93rem; margin-bottom:0.5rem;">
-                        <b>Illustrative 4-week range</b> {row.get('illustrative_4w', 'N/A')} 
-                        <span style="color:#8e8e93;">(rough estimate only)</span>
+                    <div style="color:#d1d1d6;font-size:0.9rem;margin-bottom:0.4rem;">
+                        <b>Illustrative 4-week range:</b> {row.get('illustrative_4w','N/A')}
                     </div>
-                    {f"<div class='why-text'><b>About the company</b> — {row['summary']}</div>" if row.get('summary') else ""}
-                    <div class="why-text" style="margin-top:0.5rem;"><b>Why it ranked high this week</b> — {row['why']}</div>
+                    {f"<div style='color:#d1d1d6;font-size:0.9rem;margin-bottom:0.4rem;'><b>About:</b> {row['summary']}</div>" if row.get('summary') else ""}
+                    <div style="color:#d1d1d6;font-size:0.9rem;">
+                        <b>Why it ranked high:</b> {row.get('why','')}
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
 
-        # All Ranked Opportunities - Cleaner version
-        st.markdown('<p class="section-header">All Ranked Opportunities</p>', unsafe_allow_html=True)
-        st.markdown("""
-        <div class="info-box">
-            Full list ranked by Opportunity Score.  
-            Higher score = stronger recent momentum + rising volume + healthier technical picture.
-        </div>
-        """, unsafe_allow_html=True)
+        # Full ranked table
+        st.markdown('<p class="section">All Ranked Opportunities</p>', unsafe_allow_html=True)
 
-        # Create a cleaner display dataframe
-        clean_df = df.copy()
-        clean_df["Price NZD"] = (clean_df["price"] * rate).round(2)
-        clean_df = clean_df.rename(columns={
-            "rank": "Rank",
-            "ticker": "Ticker",
-            "score": "Score",
-            "price": "Price USD",
-            "ret_1w": "1 Week %",
-            "ret_1m": "1 Month %",
-            "ret_3m": "3 Month %",
-            "rel_volume": "Rel Volume",
-            "rsi": "RSI",
-            "illustrative_4w": "Illustrative 4W"
+        display = df.copy()
+        display["Price NZD"] = (display["price"] * rate).round(2)
+        display["Company"] = display["ticker"].map(lambda t: get_company_info(t)["name"])
+
+        show = display[["rank", "ticker", "Company", "score", "price", "Price NZD", "ret_1w", "ret_1m", "rel_volume", "rsi", "illustrative_4w"]].rename(columns={
+            "rank": "Rank", "ticker": "Ticker", "score": "Score",
+            "price": "USD", "ret_1w": "1W %", "ret_1m": "1M %",
+            "rel_volume": "Vol", "rsi": "RSI", "illustrative_4w": "4W Range"
         })
 
-        show_cols = ["Rank", "Ticker", "Score", "Price USD", "Price NZD", "1 Week %", "1 Month %", 
-                     "Rel Volume", "RSI", "Illustrative 4W"]
-        show_cols = [c for c in show_cols if c in clean_df.columns]
-
-        st.dataframe(
-            clean_df[show_cols],
-            use_container_width=True,
-            height=420,
+        st.dataframe(show, use_container_width=True, height=400,
             column_config={
                 "Score": st.column_config.NumberColumn(format="%.1f"),
-                "Price USD": st.column_config.NumberColumn(format="$%.2f"),
+                "USD": st.column_config.NumberColumn(format="$%.2f"),
                 "Price NZD": st.column_config.NumberColumn(format="$%.2f"),
-                "1 Week %": st.column_config.NumberColumn(format="%+.1f%%"),
-                "1 Month %": st.column_config.NumberColumn(format="%+.1f%%"),
-                "Rel Volume": st.column_config.NumberColumn(format="%.2fx"),
+                "1W %": st.column_config.NumberColumn(format="%+.1f%%"),
+                "1M %": st.column_config.NumberColumn(format="%+.1f%%"),
+                "Vol": st.column_config.NumberColumn(format="%.2fx"),
                 "RSI": st.column_config.NumberColumn(format="%.0f"),
-            }
-        )
-
-        st.caption("Illustrative 4W is a rough heuristic based on recent momentum and volatility — not a prediction.")
+            })
 
         # Charts
-        st.markdown('<p class="section-header">Quick Visuals</p>', unsafe_allow_html=True)
-        c1, c2 = st.columns(2)
-        with c1:
+        st.markdown('<p class="section">Charts</p>', unsafe_allow_html=True)
+        col1, col2 = st.columns(2)
+        with col1:
             fig1 = px.bar(df.head(10), x="ticker", y="score", color="score",
-                          color_continuous_scale=["#1c1c1e", "#30d158"], title="Top Scores")
-            fig1.update_layout(showlegend=False, height=360, paper_bgcolor="rgba(0,0,0,0)",
-                               plot_bgcolor="rgba(0,0,0,0)", font_color="#f5f5f7", title_font_color="#f5f5f7")
+                          color_continuous_scale=["#1c1c1e", "#30d158"], title="Opportunity Score")
+            fig1.update_layout(height=420, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                               font_color="#f5f5f7", title_font_color="#ffffff", showlegend=False)
             st.plotly_chart(fig1, use_container_width=True)
-        with c2:
-            chart_df = df.dropna(subset=["ret_1w", "rel_volume", "score"])
-            if not chart_df.empty:
-                fig2 = px.scatter(chart_df, x="ret_1w", y="rel_volume", size="score", color="rsi",
-                                  hover_name="ticker", color_continuous_scale="RdYlGn",
-                                  title="Momentum vs Volume")
-                fig2.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                                   font_color="#f5f5f7", title_font_color="#f5f5f7")
-                st.plotly_chart(fig2, use_container_width=True)
+        with col2:
+            fig2 = px.scatter(df.dropna(subset=["ret_1w","rel_volume"]), x="ret_1w", y="rel_volume",
+                              size="score", color="rsi", hover_name="ticker",
+                              color_continuous_scale="RdYlGn", title="Momentum vs Volume")
+            fig2.update_layout(height=420, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                               font_color="#f5f5f7", title_font_color="#ffffff")
+            st.plotly_chart(fig2, use_container_width=True)
 
-        st.download_button("Download Full Results (CSV)", df.to_csv(index=False),
-                           file_name=f"stock_opportunities_{datetime.now().strftime('%Y%m%d')}.csv")
+        st.download_button("Download CSV", df.to_csv(index=False),
+                           file_name=f"opportunities_{datetime.now().strftime('%Y%m%d')}.csv")
 
     else:
         st.markdown("""
-        <div class="bubble-card">
-            <div class="bubble-card-title">Ready to scan</div>
-            <div class="why-text">
-                Choose a market in the sidebar and click <b>Run Screener</b>.  
-                The app will find stocks currently showing strong momentum + rising volume.
-            </div>
+        <div class="card">
+            <div class="card-title">Ready to scan</div>
+            <div style="color:#d1d1d6;">Choose a market in the sidebar and click <b>Run Screener</b>.</div>
         </div>
         """, unsafe_allow_html=True)
 
-# ==================== TAB 2: Watchlist ====================
-with tab2:
-    st.markdown('<p class="section-header">Your Watchlist</p>', unsafe_allow_html=True)
-    st.markdown("""
-    <div class="info-box">
-        Add any stocks you want to follow.  
-        Click Refresh to see their recent performance and current Opportunity Score.
-    </div>
-    """, unsafe_allow_html=True)
+# ==================== PAGE: Watchlist ====================
+elif st.session_state.page == "Watchlist":
+    st.markdown('<p class="section">Your Watchlist</p>', unsafe_allow_html=True)
 
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        new_ticker = st.text_input("Add a ticker (e.g. TSLA, BHP.AX, NVDA)", placeholder="Enter ticker")
-    with col2:
-        st.write("")
-        st.write("")
-        if st.button("Add to Watchlist", use_container_width=True) and new_ticker:
-            t = new_ticker.strip().upper()
-            if t and t not in st.session_state.watchlist:
-                st.session_state.watchlist.append(t)
-                st.success(f"Added {t}")
+    # Search box
+    search_q = st.text_input("Search companies (e.g. Tesla, Apple, BHP)", placeholder="Type company name or ticker...")
+    if search_q:
+        suggestions = search_companies(search_q)
+        if suggestions:
+            st.markdown("**Suggestions**")
+            for s in suggestions:
+                col1, col2 = st.columns([4, 1])
+                with col1:
+                    st.write(f"**{s['ticker']}** — {s['name']}")
+                with col2:
+                    if st.button("Add", key=f"add_{s['ticker']}"):
+                        if s['ticker'] not in st.session_state.watchlist:
+                            st.session_state.watchlist.append(s['ticker'])
+                            st.success(f"Added {s['ticker']}")
+                            st.rerun()
 
+    # Current list + remove
     if st.session_state.watchlist:
-        st.markdown("**Current Watchlist**")
-        cols = st.columns(min(6, len(st.session_state.watchlist)))
+        st.markdown("**Current list**")
+        cols = st.columns(min(5, len(st.session_state.watchlist)))
         for i, t in enumerate(st.session_state.watchlist):
-            with cols[i % 6]:
+            with cols[i % 5]:
                 if st.button(f"✕ {t}", key=f"rm_{t}"):
                     st.session_state.watchlist.remove(t)
                     st.rerun()
 
-    if st.button("Refresh Watchlist Data", type="primary"):
-        with st.spinner("Loading recent data for your watchlist..."):
+    if st.button("Refresh Watchlist", type="primary"):
+        with st.spinner("Updating watchlist..."):
+            # Save previous prices for change tracking
+            if st.session_state.watchlist_data is not None:
+                for _, row in st.session_state.watchlist_data.iterrows():
+                    st.session_state.prev_prices[row["ticker"]] = row["price"]
+
             st.session_state.watchlist_data = get_watchlist_history(st.session_state.watchlist)
             st.session_state.usd_nzd = get_usd_nzd_rate()
 
     if st.session_state.watchlist_data is not None and not st.session_state.watchlist_data.empty:
         wdf = st.session_state.watchlist_data.copy()
         rate = st.session_state.usd_nzd
-        wdf["Price NZD"] = (wdf["price"] * rate).round(2)
 
-        st.markdown("### Recent Performance")
-        st.dataframe(
-            wdf[["ticker", "price", "Price NZD", "ret_1w", "ret_1m", "ret_3m", "rel_volume", "rsi", "score", "illustrative_4w"]].rename(columns={
-                "ticker": "Ticker", "price": "Price USD", "ret_1w": "1W %", "ret_1m": "1M %",
-                "ret_3m": "3M %", "rel_volume": "Rel Vol", "rsi": "RSI", "score": "Score",
-                "illustrative_4w": "Illustrative 4W"
-            }),
-            use_container_width=True,
-            column_config={
-                "1W %": st.column_config.NumberColumn(format="%+.1f"),
-                "1M %": st.column_config.NumberColumn(format="%+.1f"),
-                "3M %": st.column_config.NumberColumn(format="%+.1f"),
-                "Rel Vol": st.column_config.NumberColumn(format="%.2fx"),
-                "Score": st.column_config.NumberColumn(format="%.1f"),
-                "Price USD": st.column_config.NumberColumn(format="$%.2f"),
-                "Price NZD": st.column_config.NumberColumn(format="$%.2f"),
-            }
-        )
+        st.markdown("### Performance since last check")
 
+        for _, row in wdf.iterrows():
+            ticker = row["ticker"]
+            name = row.get("company_name", ticker)
+            price = row["price"]
+            price_nzd = price * rate
+            prev = st.session_state.prev_prices.get(ticker)
+
+            change_html = ""
+            if prev is not None and prev > 0:
+                chg = price - prev
+                chg_pct = (chg / prev) * 100
+                cls = "change-up" if chg >= 0 else "change-down"
+                change_html = f'<span class="{cls}">{chg:+.2f} ({chg_pct:+.1f}%)</span>'
+
+            st.markdown(f"""
+            <div class="card">
+                <div class="card-title">
+                    <span class="ticker-badge">{ticker}</span> {name}
+                </div>
+                <div style="display:flex;gap:1.8rem;flex-wrap:wrap;align-items:center;">
+                    <div>
+                        <span style="color:#8e8e93;font-size:0.8rem;">Price</span><br>
+                        <b>${price:.2f}</b> USD · <b>${price_nzd:.2f}</b> NZD
+                    </div>
+                    <div>
+                        <span style="color:#8e8e93;font-size:0.8rem;">1 Week</span><br>
+                        <b class="{'green' if row['ret_1w']>=0 else 'red'}">{row['ret_1w']:+.1f}%</b>
+                    </div>
+                    <div>
+                        <span style="color:#8e8e93;font-size:0.8rem;">1 Month</span><br>
+                        <b class="{'green' if row['ret_1m']>=0 else 'red'}">{row['ret_1m']:+.1f}%</b>
+                    </div>
+                    <div>
+                        <span style="color:#8e8e93;font-size:0.8rem;">Score</span><br>
+                        <b>{row['score']:.1f}</b>
+                    </div>
+                    <div>
+                        <span style="color:#8e8e93;font-size:0.8rem;">Since last check</span><br>
+                        {change_html if change_html else "<span style='color:#8e8e93;'>First check</span>"}
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        # Chart
         fig = px.bar(wdf, x="ticker", y="ret_1w", color="ret_1w",
-                     color_continuous_scale=["#ff453a", "#30d158"], title="1-Week Performance of Watchlist")
-        fig.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                          font_color="#f5f5f7", title_font_color="#f5f5f7", showlegend=False)
+                     color_continuous_scale=["#ff453a", "#30d158"], title="1-Week Return")
+        fig.update_layout(height=380, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                          font_color="#f5f5f7", title_font_color="#ffffff", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
-        st.info("Add some tickers and click **Refresh Watchlist Data**.")
+        st.info("Add stocks using the search box above, then click **Refresh Watchlist**.")
 
-# ==================== TAB 3: IPOs ====================
-with tab3:
-    st.markdown('<p class="section-header">Upcoming & Recent IPOs</p>', unsafe_allow_html=True)
+# ==================== PAGE: IPOs ====================
+elif st.session_state.page == "IPOs":
+    st.markdown('<p class="section">Upcoming & Recent IPOs</p>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="info-box">
-        New companies coming to the market.  
-        These cannot be scored the same way until they start trading (no price history yet).
+    <div class="info">
+        New companies coming to market. These cannot be fully scored until they start trading.
     </div>
     """, unsafe_allow_html=True)
 
     if st.button("Refresh IPO Calendar"):
-        with st.spinner("Fetching IPO data..."):
+        with st.spinner("Loading..."):
             st.session_state.ipo_df = get_ipo_calendar(limit=40)
 
     if st.session_state.ipo_df is not None and not st.session_state.ipo_df.empty:
         st.dataframe(st.session_state.ipo_df, use_container_width=True, height=450)
     else:
-        st.info("Click **Refresh IPO Calendar** to load the latest available data.")
+        st.info("Click **Refresh IPO Calendar** to load data.")
 
-# ==================== TAB 4: How to use ====================
-with tab4:
-    st.markdown('<p class="section-header">How to use this tool</p>', unsafe_allow_html=True)
+# ==================== PAGE: Guide ====================
+else:
+    st.markdown('<p class="section">How to use this app</p>', unsafe_allow_html=True)
     st.markdown("""
-    <div class="bubble-card">
-        <div class="bubble-card-title">Simple weekly routine</div>
-        <div class="why-text">
-            1. Choose a market (S&P 500, Higher-risk, or ASX)<br>
+    <div class="card">
+        <div class="card-title">Weekly routine</div>
+        <div style="color:#d1d1d6;line-height:1.6;">
+            1. Choose a market in the sidebar<br>
             2. Click <b>Run Screener</b><br>
-            3. Look at the Top 5 first — these currently have the strongest combination of momentum + volume<br>
-            4. Check the full ranked list for more ideas<br>
-            5. Add interesting names to your Watchlist so you can track them easily<br><br>
-            <b>Best time to run:</b> Friday evening or Saturday (NZ time) after US markets close.
+            3. Look at the <b>Top Opportunities</b> first<br>
+            4. Add interesting names to your <b>Watchlist</b><br>
+            5. Come back later and refresh the Watchlist to see what moved
         </div>
     </div>
     """, unsafe_allow_html=True)
 
     st.markdown("""
-    **What the score is trying to find**  
-    Stocks that are already moving with conviction (strong recent price rise + rising volume) while still looking reasonably healthy on the chart (not extremely overbought, still above key moving averages).
+    **What the score looks for**  
+    Stocks that are already moving with conviction (strong recent price rise + rising volume) while still looking reasonably healthy on the chart.
 
     **Important**  
-    This is a research and idea-generation tool only.  
-    It is **not** financial advice.  
+    This is a research tool only. It is **not** financial advice.  
     Past performance does not guarantee future results.  
-    Always do your own research and never invest money you cannot afford to lose.
+    Always do your own research.
     """)
 
 st.markdown("---")
-st.caption("Not financial advice. Prices in NZD are approximate using the latest available USD/NZD rate.")
+st.caption("Not financial advice · NZD prices are approximate · Data from Yahoo Finance")
