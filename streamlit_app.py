@@ -1,6 +1,6 @@
 """
-Weekly Stock Opportunity Screener - Polished Streamlit Dashboard
-Apple-style cards + Watchlist + Higher-risk + IPO calendar
+Weekly Stock Opportunity Screener - Streamlit Dashboard
+Clean Apple-style cards + Higher-risk + IPO calendar
 """
 
 import streamlit as st
@@ -13,8 +13,7 @@ from stock_screener_core import (
     get_higher_risk_tickers,
     generate_report,
     enrich_top_stocks,
-    get_ipo_calendar,
-    get_watchlist_history
+    get_ipo_calendar
 )
 
 st.set_page_config(
@@ -27,85 +26,26 @@ st.set_page_config(
 # ---------- Polished Apple-style CSS ----------
 st.markdown("""
 <style>
-    .stApp {
-        background-color: #0d0d0f;
-        color: #f5f5f7;
-    }
-    .main-header {
-        font-size: 2.15rem;
-        font-weight: 700;
-        color: #f5f5f7;
-        letter-spacing: -0.6px;
-        margin-bottom: 0.1rem;
-    }
-    .sub-header {
-        font-size: 1.05rem;
-        color: #8e8e93;
-        margin-bottom: 1.6rem;
-    }
+    .stApp { background-color: #0d0d0f; color: #f5f5f7; }
+    .main-header { font-size: 2.15rem; font-weight: 700; color: #f5f5f7; letter-spacing: -0.6px; margin-bottom: 0.1rem; }
+    .sub-header { font-size: 1.05rem; color: #8e8e93; margin-bottom: 1.6rem; }
     .bubble-card {
-        background: #1c1c1e;
-        border-radius: 18px;
-        padding: 1.35rem 1.45rem;
-        margin-bottom: 1rem;
-        border: 1px solid #2c2c2e;
+        background: #1c1c1e; border-radius: 18px; padding: 1.35rem 1.45rem;
+        margin-bottom: 1rem; border: 1px solid #2c2c2e;
         box-shadow: 0 6px 24px rgba(0,0,0,0.28);
     }
-    .bubble-card-title {
-        font-size: 1.12rem;
-        font-weight: 600;
-        color: #f5f5f7;
-        margin-bottom: 0.55rem;
-    }
-    .metric-label {
-        font-size: 0.82rem;
-        color: #8e8e93;
-        margin-bottom: 0.2rem;
-        letter-spacing: 0.2px;
-    }
-    .metric-value {
-        font-size: 1.75rem;
-        font-weight: 650;
-        color: #f5f5f7;
-        letter-spacing: -0.6px;
-    }
-    .score-highlight {
-        color: #30d158;
-        font-weight: 700;
-    }
-    .section-header {
-        font-size: 1.32rem;
-        font-weight: 600;
-        color: #f5f5f7;
-        margin: 1.7rem 0 0.9rem 0;
-        letter-spacing: -0.3px;
-    }
-    .why-text {
-        color: #d1d1d6;
-        font-size: 0.94rem;
-        line-height: 1.55;
-    }
+    .bubble-card-title { font-size: 1.12rem; font-weight: 600; color: #f5f5f7; margin-bottom: 0.55rem; }
+    .metric-label { font-size: 0.82rem; color: #8e8e93; margin-bottom: 0.2rem; }
+    .metric-value { font-size: 1.75rem; font-weight: 650; color: #f5f5f7; letter-spacing: -0.6px; }
+    .score-highlight { color: #30d158; font-weight: 700; }
+    .section-header { font-size: 1.32rem; font-weight: 600; color: #f5f5f7; margin: 1.7rem 0 0.9rem 0; letter-spacing: -0.3px; }
+    .why-text { color: #d1d1d6; font-size: 0.94rem; line-height: 1.55; }
     .success-pill {
-        background: #13251a;
-        border: 1px solid #1e3a29;
-        border-radius: 14px;
-        padding: 0.85rem 1.2rem;
-        color: #30d158;
-        font-weight: 500;
-        margin-bottom: 1.2rem;
+        background: #13251a; border: 1px solid #1e3a29; border-radius: 14px;
+        padding: 0.85rem 1.2rem; color: #30d158; font-weight: 500; margin-bottom: 1.2rem;
     }
     #MainMenu, footer {visibility: hidden;}
-    section[data-testid="stSidebar"] {
-        background-color: #161618;
-        border-right: 1px solid #2c2c2e;
-    }
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 12px;
-        padding: 0.5rem 1.1rem;
-    }
+    section[data-testid="stSidebar"] { background-color: #161618; border-right: 1px solid #2c2c2e; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -152,8 +92,6 @@ if "results" not in st.session_state:
     st.session_state.top5_enriched = None
     st.session_state.universe_used = None
     st.session_state.ipo_df = None
-    st.session_state.watchlist = ["AAPL", "NVDA", "MSFT", "AMZN", "META"]  # default starter list
-    st.session_state.watchlist_data = None
 
 # ---------- Run logic ----------
 if run_button:
@@ -177,14 +115,13 @@ if run_button:
             st.session_state.top5_enriched = None
 
 # ---------- Tabs ----------
-tab1, tab2, tab3, tab4 = st.tabs([
+tab1, tab2, tab3 = st.tabs([
     "Main Opportunities",
-    "Watchlist",
     "Upcoming & Recent IPOs",
     "Higher-Risk Info"
 ])
 
-# ==================== TAB 1: Main Opportunities ====================
+# ==================== TAB 1 ====================
 with tab1:
     if st.session_state.results is not None and not st.session_state.results.empty:
         df = st.session_state.results
@@ -196,7 +133,7 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-        # Bubble metrics
+        # Metrics
         m1, m2, m3, m4 = st.columns(4)
         with m1:
             st.markdown(f"""
@@ -260,6 +197,9 @@ with tab1:
             st.markdown('<p class="section-header">Top 5 Ranked Stocks</p>', unsafe_allow_html=True)
 
             for _, row in st.session_state.top5_enriched.iterrows():
+                summary_html = f"<div class='why-text'><b>About</b> — {row['summary']}</div>" if row.get('summary') else ""
+                why_html = f"<div class='why-text' style='margin-top:0.55rem;'><b>Why it ranked high</b> — {row['why']}</div>"
+
                 st.markdown(f"""
                 <div class="bubble-card">
                     <div class="bubble-card-title">#{int(row['rank'])} &nbsp; {row['ticker']} &nbsp;·&nbsp; {row['company_name']}</div>
@@ -277,8 +217,8 @@ with tab1:
                         <b>RSI</b> {row['rsi']:.0f} &nbsp;·&nbsp;
                         <b>Illustrative 4W</b> {row.get('illustrative_4w', 'N/A')}
                     </div>
-                    {f"<div class='why-text'><b>About</b> — {row['summary']}</div>" if row.get('summary') else ""}
-                    <div class="why-text" style="margin-top:0.55rem;"><b>Why it ranked high</b> — {row['why']}</div>
+                    {summary_html}
+                    {why_html}
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -340,73 +280,14 @@ with tab1:
         </div>
         """, unsafe_allow_html=True)
 
-# ==================== TAB 2: Watchlist ====================
+# ==================== TAB 2: IPOs ====================
 with tab2:
-    st.markdown('<p class="section-header">Your Watchlist</p>', unsafe_allow_html=True)
-
-    col_add, col_btn = st.columns([3, 1])
-    with col_add:
-        new_ticker = st.text_input("Add ticker (e.g. TSLA or PLTR)", placeholder="Enter ticker symbol")
-    with col_btn:
-        st.write("")
-        st.write("")
-        if st.button("Add", use_container_width=True) and new_ticker:
-            t = new_ticker.strip().upper()
-            if t and t not in st.session_state.watchlist:
-                st.session_state.watchlist.append(t)
-                st.success(f"Added {t}")
-
-    # Remove buttons
-    if st.session_state.watchlist:
-        st.markdown("**Current list**")
-        remove_cols = st.columns(min(6, len(st.session_state.watchlist)))
-        for i, t in enumerate(st.session_state.watchlist):
-            with remove_cols[i % 6]:
-                if st.button(f"✕ {t}", key=f"rm_{t}"):
-                    st.session_state.watchlist.remove(t)
-                    st.rerun()
-
-    if st.button("Refresh Watchlist Data", type="primary"):
-        with st.spinner("Loading history for your watchlist..."):
-            st.session_state.watchlist_data = get_watchlist_history(st.session_state.watchlist)
-
-    if st.session_state.watchlist_data is not None and not st.session_state.watchlist_data.empty:
-        wdf = st.session_state.watchlist_data
-        st.markdown("### Recent Performance")
-        st.dataframe(
-            wdf[["ticker", "price", "ret_1w", "ret_1m", "ret_3m", "rel_volume", "rsi", "score", "illustrative_4w"]].rename(columns={
-                "ticker": "Ticker", "price": "Price", "ret_1w": "1W %", "ret_1m": "1M %",
-                "ret_3m": "3M %", "rel_volume": "Rel Vol", "rsi": "RSI", "score": "Score",
-                "illustrative_4w": "Illustrative 4W"
-            }),
-            use_container_width=True,
-            column_config={
-                "1W %": st.column_config.NumberColumn(format="%+.1f"),
-                "1M %": st.column_config.NumberColumn(format="%+.1f"),
-                "3M %": st.column_config.NumberColumn(format="%+.1f"),
-                "Rel Vol": st.column_config.NumberColumn(format="%.2fx"),
-                "Score": st.column_config.NumberColumn(format="%.1f"),
-            }
-        )
-
-        # Simple performance chart
-        fig_w = px.bar(wdf, x="ticker", y="ret_1w", color="ret_1w",
-                       color_continuous_scale=["#ff453a", "#30d158"],
-                       title="1-Week Return of Watchlist")
-        fig_w.update_layout(height=360, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                            font_color="#f5f5f7", title_font_color="#f5f5f7", showlegend=False)
-        st.plotly_chart(fig_w, use_container_width=True)
-    else:
-        st.info("Add some tickers and click **Refresh Watchlist Data** to see recent performance.")
-
-# ==================== TAB 3: IPOs ====================
-with tab3:
     st.markdown('<p class="section-header">Upcoming & Recent IPOs</p>', unsafe_allow_html=True)
     st.markdown("""
     <div class="bubble-card">
         <div class="why-text">
             Upcoming IPOs cannot be scored the same way (no price/volume history yet).  
-            Once they start trading you can add them to your Watchlist or run the main screener.
+            Once they start trading you can run the main screener on them.
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -420,10 +301,9 @@ with tab3:
     else:
         st.info("Click **Refresh IPO Calendar** to load the latest available data.")
 
-# ==================== TAB 4: Higher-Risk Info ====================
-with tab4:
+# ==================== TAB 3: Higher-Risk Info ====================
+with tab3:
     st.markdown('<p class="section-header">Higher-Risk Smaller Stocks</p>', unsafe_allow_html=True)
-
     st.markdown("""
     <div class="bubble-card">
         <div class="why-text">
@@ -442,8 +322,7 @@ with tab4:
     - Recent high-growth and thematic stocks
     - Higher potential moves and higher chance of large losses
 
-    It still uses the same momentum + volume + risk-filter scoring logic as the main S&P 500 scan,  
-    just applied to a riskier group of stocks.
+    It still uses the same momentum + volume + risk-filter scoring logic as the main S&P 500 scan.
     """)
 
 st.markdown("---")
