@@ -59,16 +59,14 @@ def get_asx_tickers():
 # 2. FX Helper (USD → NZD)
 # -----------------------------
 def get_usd_nzd_rate():
-    """Get approximate USD to NZD rate."""
     try:
         t = yf.Ticker("NZD=X")
         hist = t.history(period="5d")
         if not hist.empty:
             return float(hist["Close"].iloc[-1])
-        # fallback
         return 1.70
     except Exception:
-        return 1.70  # safe fallback
+        return 1.70
 
 
 # -----------------------------
